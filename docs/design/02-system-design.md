@@ -78,16 +78,26 @@ Metanet Node Structure:
 
 ## 3. Discovery & Interaction Architecture
 
-### 3.1 Curator API — Central Interaction Point
+### 3.1 Curator — Dual Interface
 
-Curator is a known service provider with a public API. All roles interact with Curator directly:
+Curator is a known service provider that serves both humans and AI agents:
 
-| Caller | Curator API | Purpose |
-|--------|-------------|---------|
-| Creator | `POST /videos` | Submit video metadata + per-video derived key |
-| CDN | `GET /videos` | Browse video catalog, get chunkTxIds for on-chain download |
-| Viewer | `GET /videos` | Browse/search video catalog for recommendation |
-| Viewer | `POST /authorize` | HTLC key exchange (request invoice, notify funding, receive claim) |
+**Web UI (for humans)**:
+- Browse and search video catalog
+- Creator dashboard: upload videos, set pricing, view analytics
+- Embedded Viewer Agent (client-side JS): when user clicks play, the browser-side agent handles HTLC authorization (via Curator API), chunk download (from CDN), local decryption, and playback. Curator server never touches decrypted video data.
+- Requires BSV wallet capability in browser (wallet extension or embedded wallet)
+
+**API (for agents)**:
+
+| Caller | Endpoint | Purpose |
+|--------|----------|---------|
+| Creator Agent | `POST /videos` | Submit video metadata + per-video derived key |
+| CDN Agent | `GET /videos` | Browse video catalog, get chunkTxIds for on-chain download |
+| Viewer Agent | `GET /videos` | Browse/search video catalog for recommendation |
+| Viewer Agent | `POST /authorize` | HTLC key exchange (request invoice, notify funding, receive claim) |
+
+Web UI and API share the same backend. The Web UI is a frontend that calls the same API endpoints.
 
 ### 3.2 CDN Discovery — MessageBox
 
