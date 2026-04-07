@@ -26,7 +26,9 @@ aesKey_i = HKDF-SHA256(
 )
 ```
 
-Creator delegates `D_video` to Curator. Curator can derive all chunk keys for that video, but cannot access other videos or Creator's master key.
+Creator delegates `D_video` to Curator via ECIES on-chain. Curator can derive all chunk keys for that video, but cannot access other videos or Creator's master key.
+
+Note: `ECDH(D_video, P_video)` is self-ECDH — the shared secret is deterministic. This is intentional for compatibility with the Method 42 library API, which expects an ECDH-based key derivation pattern.
 
 **Encryption output format**:
 ```
@@ -71,21 +73,22 @@ Works because `ECDH(D_video, P_buyer) == ECDH(D_buyer, P_video)` (ECDH symmetry)
 
 Buyer needs `P_video` (included in invoice response) to recover the key.
 
-### 2.2 HTLC Script (106 bytes)
+### 2.2 HTLC Script (108 bytes)
 
 ```
 <invoiceId>  OP_DROP
 OP_IF
-  OP_SHA256  <capsuleHash>  OP_EQUALVERIFY
+  OP_HASH256  <capsuleHash>  OP_EQUALVERIFY
   OP_DUP  OP_HASH160  <curatorPkh>  OP_EQUALVERIFY  OP_CHECKSIG
 OP_ELSE
+  <locktime>  OP_CHECKLOCKTIMEVERIFY  OP_DROP
   OP_DUP  OP_HASH160  <buyerPkh>  OP_EQUALVERIFY  OP_CHECKSIG
 OP_ENDIF
 ```
 
 **Parameters**:
 - `invoiceId` (16 bytes): Replay protection
-- `capsuleHash` (32 bytes): SHA256(SHA256(videoId || chunkIndex || capsule))
+- `capsuleHash` (32 bytes): SHA256(SHA256(videoId || chunkIndex || capsule)) — verified by `OP_HASH256` which computes double-SHA256
 - `curatorPkh` (20 bytes): Curator's P2PKH address (claim path)
 - `buyerPkh` (20 bytes): Buyer's P2PKH address (refund path)
 
@@ -94,9 +97,9 @@ OP_ENDIF
 | Path | Selector | Unlocking Script | Use Case |
 |------|----------|-----------------|----------|
 | Claim (IF) | `OP_TRUE` | `<sig> <curatorPubKey> <videoId\|\|chunkIdx\|\|capsule> OP_TRUE` | Curator claims, reveals capsule |
-| Refund (ELSE) | `OP_FALSE` | `<sig> <buyerPubKey> OP_FALSE` | Buyer refunds after timeout |
+| Refund (ELSE) | `OP_FALSE` | `<sig> <buyerPubKey> OP_FALSE` | Buyer refunds after timelock |
 
-**Timeout**: Enforced via `nLockTime` on refund transaction (default 72 blocks, range [6, 288]).
+**Timeout**: Enforced by `OP_CHECKLOCKTIMEVERIFY` in the ELSE branch (default 72 blocks, range [6, 288]). Consensus-level guarantee — Buyer cannot refund before the locktime.
 
 ### 2.3 Claim Transaction (Atomic Split)
 
@@ -184,10 +187,10 @@ Viewer Agent                               Curator Service
 |----------|-----------|
 | Atomicity | HTLC: Curator gets paid ⟺ capsule revealed |
 | Atomic split | Claim tx outputs enforced by Curator; verifiable against on-chain metadata |
-| Buyer-specific | Capsule uses ECDH(D_creator, P_buyer); on-chain but only buyer can recover aesKey |
+| Buyer-specific | Capsule uses ECDH(D_video, P_buyer); on-chain but only buyer can recover aesKey |
 | Unlinkability | Per-invoice nonce prevents purchase correlation |
-| Refund safety | nLockTime-based unilateral refund |
-| Zero scanning | All communication via MessageBox; only specific txid lookups |
+| Refund safety | OP_CHECKLOCKTIMEVERIFY-enforced timelock in refund path |
+| Zero scanning | CDN discovery via MessageBox, authorization via Curator API; only specific txid lookups on-chain |
 | Replay protection | invoiceId embedded in HTLC script |
 | Verifiable split | creatorSharePercent declared in on-chain Metanet metadata |
 

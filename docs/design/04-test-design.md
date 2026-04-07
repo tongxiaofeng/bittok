@@ -142,8 +142,8 @@
 
 **Setup**: 1 Creator, 1 Curator, 1 CDN, 1 Viewer
 
-1. Creator publishes a 10-second video to Curator
-2. Curator stores 10 encrypted chunks on-chain, publishes metadata
+1. Creator encrypts a 10-second video (10 chunks)
+2. Creator stores 10 encrypted chunks on-chain (B://), publishes Metanet metadata, submits to Curator
 3. CDN discovers video via Curator API, downloads chunks from chain and caches
 4. Viewer discovers video via Curator API
 5. Viewer purchases authorization for chunks 0-9 from Curator (HTLC)
@@ -210,7 +210,7 @@
 - All 10 Viewers successfully complete HTLC cycles
 - Each Viewer gets unique capsules (different nonces)
 - Creator receives correct total (10 × 15 × creator_share)
-- Curator handles concurrent MessageBox requests without error
+- Curator handles concurrent API requests without error
 - CDN serves 10 parallel x402 streams
 
 ## 5. Performance Tests

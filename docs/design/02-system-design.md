@@ -24,8 +24,9 @@ Each role's public key (BRC-100) IS the identity. No on-chain registration node 
 - Duration: 15–60 seconds
 - Chunking: 1 second per chunk
 - Encryption: Each chunk independently encrypted with AES-256-GCM
-- Key derivation: Method 42 ECDH
-  - `aesKey_i = HKDF(ECDH(D_creator, P_creator), keyHash_i, "bittok-chunk-encryption")`
+- Key derivation: Method 42 ECDH with per-video derived key
+  - `D_video = HKDF(D_creator, videoId, "bittok-video-key")` — per-video key, delegated to Curator
+  - `aesKey_i = HKDF(ECDH(D_video, P_video).x, keyHash_i, "bittok-chunk-encryption")`
   - `keyHash_i = SHA256(SHA256(plaintext_chunk_i))`
 
 ### 2.2 On-Chain Content Storage
@@ -59,9 +60,11 @@ Metanet Node Structure:
     chunkCount                 # e.g., 30 for a 30s video
     chunkHashes[]              # SHA256(SHA256(encrypted_chunk_i))
     chunkTxIds[]               # On-chain storage txid per chunk (B:// or BCAT)
+    chunkSizes[]               # Bytes per chunk (variable due to video encoding)
     keyHashes[]                # keyHash per chunk (for capsule derivation)
     satoshisPerKilobyte        # Authorization fee (satoshis/KB)
     creatorSharePercent        # Creator's share of authorization fee (e.g., 70)
+    encryptedKey               # ECIES(P_curator, D_video) — only Curator can decrypt
     timestamp
 ```
 
@@ -70,7 +73,7 @@ Metanet Node Structure:
 1. Creator encrypts video chunks locally (key derived from per-video derived key, not master key)
 2. Creator stores encrypted chunks on-chain (B:// or BCAT)
 3. Creator publishes Metanet metadata on-chain (includes chunk storage txids, split ratio)
-4. Creator transfers per-video derived key to Curator (via secure channel). Derived as `D_video = HKDF(D_creator, videoId)`. Master key `D_creator` never leaves Creator.
+4. Creator encrypts per-video derived key for Curator using ECIES: `encryptedKey = ECIES(P_curator, D_video)`, included in Metanet metadata. Derived as `D_video = HKDF(D_creator, videoId, "bittok-video-key")`. Master key `D_creator` never leaves Creator. Curator decrypts with `D_curator` — no direct Creator→Curator communication needed for key transfer.
 5. Creator can go offline
 
 **Future improvement**: Replace per-video key delegation with Proxy Re-Encryption (PRE) so Curator can facilitate key exchange without ever knowing decryption keys.
@@ -192,7 +195,7 @@ CDN → Viewer:  200 OK + encrypted chunk data
 
 ### Trust Model
 
-- Creator delegates per-video derived keys to Curator, not master key (limited trust: compromise affects only that video)
+- Creator delegates per-video derived keys to Curator via ECIES on-chain, not master key (limited trust: compromise affects only that video)
 - Revenue split is atomic on-chain (no trust required for payment)
 - Creator can verify all transactions on-chain
 - Creator can switch Curators — ownership proven by Metanet identity
