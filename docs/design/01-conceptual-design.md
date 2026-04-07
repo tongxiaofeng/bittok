@@ -78,7 +78,7 @@ Creator                 Curator          Blockchain          CDN               V
   │ Publish metadata ────────────────────>   │                │                  │
   │ Transfer keys ───────>│                  │                │                  │
   │ (can go offline)      │                  │                │                  │
-  │                       │ Runs Overlay     │                │                  │
+  │                       │ Runs video API   │                │                  │
   │                       │ Runs HTLC auth   │                │                  │
   │                       │                  │                │                  │
   │                       │                  │<── download ───│                  │

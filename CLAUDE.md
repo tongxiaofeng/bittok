@@ -24,14 +24,13 @@ Two-layer payment:
 - **Layer 1 (on-chain)**: Viewer → Curator HTLC authorization. Claim tx atomically splits output to Creator + Curator.
 - **Layer 2 (off-chain)**: Viewer → CDN download via x402 + Payment Channel.
 
-Content discovery via Curator's Overlay Service (SHIP/SLAP). Node availability via MessageBox P2P. Content metadata uses **Metanet DAG** nodes with TLV-encoded payloads.
+Content discovery via Curator's API. CDN availability via MessageBox P2P. On-chain Metanet metadata for verification/ownership proof, not discovery.
 
 ## Tech Stack
 
 - TypeScript full stack (Node.js agents + React/Next.js frontend)
 - `@bsv/sdk`, `@bsv/simple`, `@bsv/simple-mcp`
 - **Runar** (runar.build) for smart contracts — TypeScript compiled to Bitcoin Script. NOT sCrypt.
-- On-chain data storage follows "An Immutable File and Data Store" method
 
 ## BSV Conventions (MUST follow)
 
@@ -39,10 +38,5 @@ Content discovery via Curator's Overlay Service (SHIP/SLAP). Node availability v
 - **Double-hash** for all data hashes: `SHA256(SHA256(x))`
 - **Metanet data structure** for all on-chain data (video metadata)
 - **satoshisPerKilobyte** for all pricing (matches `@bsv/sdk` `SatoshisPerKilobyte` class)
-- Follow existing BSV ecosystem standards (BRC-100 identity, TLV encoding, x402 protocol, SHIP/SLAP overlay)
+- Follow existing BSV ecosystem standards (BRC-100 identity, TLV encoding, x402 protocol)
 - Use "peer-to-peer", never "decentralized"
-
-## Current Simplifications
-
-Per `note.md`:
-- No on-chain video reviews

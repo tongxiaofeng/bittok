@@ -87,14 +87,14 @@
 | BCAT split | chunk data > 100KB | Multiple part txs + anchor tx |
 | BCAT reassembly | anchor txid | Original chunk data |
 
-### 2.8 Overlay (SHIP/SLAP)
+### 2.8 Curator API
 
 | Test Case | Input | Expected Output |
 |-----------|-------|-----------------|
-| Index video metadata tx | Metanet video node tx | Searchable in overlay |
+| Submit video | video metadata + per-video key | Video stored in catalog, key stored for auth |
+| List videos | GET /videos | List of available videos with metadata |
 | Query by tag | tag string | List of matching videos |
 | Query by Creator pubkey | Creator's public key | All videos by that Creator |
-| Query by Curator pubkey | Curator's public key | All videos on that Curator |
 
 ## 3. Integration Tests
 
@@ -102,7 +102,7 @@
 
 | Test Case | Description |
 |-----------|-------------|
-| Full publish flow | Creator encrypts video → stores chunks on-chain (B://BCAT) → publishes Metanet metadata → transfers keys to Curator → metadata appears in Curator Overlay |
+| Full publish flow | Creator encrypts video → stores chunks on-chain (B://BCAT) → publishes Metanet metadata → submits to Curator API (metadata + per-video key) → video appears in Curator catalog |
 | Metadata matches content | chunkHashes in metadata match actual stored chunk hashes |
 | chunkTxIds valid | Each txid in metadata resolves to a valid B:// / BCAT transaction |
 | Identity linkage | Video Metanet node parent = Creator's identity node txid |
@@ -122,7 +122,7 @@
 
 | Test Case | Description |
 |-----------|-------------|
-| CDN discovers via Overlay | CDN queries Curator overlay → receives video list |
+| CDN discovers via Curator API | CDN queries Curator API → receives video list with chunkTxIds |
 | CDN downloads from chain | CDN fetches encrypted chunks by txid → data matches chunkHashes |
 | CDN serves via x402 | Viewer requests chunk from CDN → 402 response → payment → chunk delivered |
 | CDN data integrity | Chunk served by CDN matches chunk stored on-chain (hash comparison) |
@@ -144,8 +144,8 @@
 
 1. Creator publishes a 10-second video to Curator
 2. Curator stores 10 encrypted chunks on-chain, publishes metadata
-3. CDN discovers video via Overlay, downloads and caches chunks
-4. Viewer discovers video via Overlay
+3. CDN discovers video via Curator API, downloads chunks from chain and caches
+4. Viewer discovers video via Curator API
 5. Viewer purchases authorization for chunks 0-9 from Curator (HTLC)
 6. Viewer downloads encrypted chunks from CDN (x402)
 7. Viewer decrypts and plays all 10 chunks
@@ -221,7 +221,7 @@
 | Curator concurrent throughput | Max concurrent HTLC cycles handled | ≥ 50 |
 | CDN x402 throughput | Chunks served per second | ≥ 100 |
 | Viewer buffer fill time | Time to fill 3-chunk buffer | < 5 seconds |
-| Overlay query latency | Time to return video list | < 500ms |
+| Curator API query latency | Time to return video list | < 500ms |
 | 24h sustained throughput | Total on-chain transactions in 24h | Measure and report |
 
 ## 6. Test Data

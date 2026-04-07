@@ -14,7 +14,7 @@ Each role's public key (BRC-100) IS the identity. No on-chain registration node 
 | HTLC script | `curatorPkh` (claim path), `buyerPkh` (refund path) |
 | HTLC claim tx outputs | Creator address (from `P_creator`), Curator address (from `P_curator`) |
 | MessageBox | Messages signed with sender's private key, verified by public key |
-| Overlay queries | Search by `creatorPubKey` |
+| Curator API queries | Search by `creatorPubKey` |
 | CDN broadcasts | Availability signed with `P_cdn`, verifiable by any peer |
 
 ## 2. Content Model
@@ -76,38 +76,44 @@ Metanet Node Structure:
 
 **Future improvement**: Replace per-video key delegation with Proxy Re-Encryption (PRE) so Curator can facilitate key exchange without ever knowing decryption keys.
 
-## 3. Discovery Architecture
+## 3. Discovery & Interaction Architecture
 
-### 3.1 Content Discovery — Overlay Service (SHIP/SLAP)
+### 3.1 Curator API — Central Interaction Point
 
-Curator runs a topic-specific Overlay Service node that indexes transactions matching the `bittok` protocol prefix.
+Curator is a known service provider with a public API. All roles interact with Curator directly:
 
-- **SHIP (Simple Hosting and Indexing Protocol)**: Indexes BitTok Metanet nodes (video metadata)
-- **SLAP (Service Lookup Availability Protocol)**: Allows agents to discover available Curator overlay nodes
+| Caller | Curator API | Purpose |
+|--------|-------------|---------|
+| Creator | `POST /videos` | Submit video metadata + per-video derived key |
+| CDN | `GET /videos` | Browse video catalog, get chunkTxIds for on-chain download |
+| Viewer | `GET /videos` | Browse/search video catalog for recommendation |
+| Viewer | `POST /authorize` | HTLC key exchange (request invoice, notify funding, receive claim) |
 
-**Flow**:
-1. Curator publishes video metadata → Metanet node tx broadcast to network
-2. Curator's overlay node indexes the tx (protocol-prefix matching)
-3. Viewer/CDN agents query Curator's overlay to discover available videos
-4. Overlay returns video metadata (title, tags, pricing, chunk txids, etc.)
-5. Agents verify data against on-chain Metanet node if needed (by txid)
+### 3.2 CDN Discovery — MessageBox
 
-### 3.2 Node Discovery — MessageBox
-
-Dynamic, real-time information flows through MessageBox P2P:
+CDN availability and pricing flows through MessageBox P2P:
 
 - **CDN availability**: "I have video X chunks 1-30 available, download price: 1 sats/KB"
 - **Pricing updates**: CDN agents broadcast updated pricing
-- **Purchase requests**: Viewer → Curator for HTLC key exchange
+- Viewer agents listen to MessageBox to discover available CDNs and compare prices
 
-### 3.3 Discovery Summary
+### 3.3 On-Chain Metanet — Verification
+
+On-chain Metanet metadata is NOT used for discovery. It serves as the source of truth for verification:
+
+- Content ownership proof (Creator's public key as Metanet parent)
+- Verifiable pricing and split ratio
+- Chunk hash integrity verification
+- Permanence — metadata outlives any specific Curator
+
+### 3.4 Summary
 
 | What | Where | Purpose |
 |------|-------|---------|
-| Video catalog | Curator Overlay (SHIP) | Content discovery, search, browse |
-| Node availability | MessageBox | Real-time pricing, seller selection |
-| Payment + key exchange | MessageBox + on-chain HTLC | Authorization |
-| Permanent record | On-chain Metanet nodes | Verification, ownership proof |
+| Video catalog | Curator API | Content discovery, search, browse |
+| CDN availability | MessageBox | Real-time pricing, seller selection |
+| HTLC authorization | Curator API + on-chain | Key exchange, payment |
+| Verification | On-chain Metanet nodes | Ownership proof, integrity check |
 
 ## 4. Payment Architecture
 
@@ -171,7 +177,7 @@ CDN → Viewer:  200 OK + encrypted chunk data
 ## 6. Curator Economics
 
 - Curator receives `(100 - creatorSharePercent)%` of every authorization fee (atomic on-chain split)
-- Curator runs Overlay Service infrastructure
+- Curator runs video catalog API and authorization service
 - Curator does NOT store content or provide download service — Creator stores on-chain, CDN handles distribution
 
 ### Trust Model
@@ -239,7 +245,7 @@ Initial latency: ~3-5 seconds. After buffer filled: smooth playback with rolling
 |-----------|------------------------|----------|
 | Creator publish API | Encrypt → transfer to Curator | — |
 | AI video generation | — | Remotion + call publish API |
-| Curator Service | Overlay, HTLC auth, on-chain storage | — |
+| Curator Service | Video catalog API, HTLC auth | — |
 | CDN Agent | Full implementation | — |
 | Viewer Agent | Full implementation | — |
 | Web UI | Real-time dashboard | — |

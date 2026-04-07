@@ -116,68 +116,66 @@ creator_share = floor(total * creatorSharePercent / 100)
 curator_share = total - creator_share
 ```
 
-### 2.4 Purchase Flow (MessageBox Protocol)
+### 2.4 Purchase Flow (Direct API to Curator)
 
 ```
-Viewer Agent              MessageBox            Curator Service
-    │                         │                       │
-    │ ① REQUEST               │                       │
-    │ {                       │                       │
-    │   videoId,              │                       │
-    │   chunkIndex,           │                       │
-    │   buyerPubKey           │                       │
-    │ }                       │                       │
-    │────────────────────────>│──────────────────────>│
-    │                         │                       │
-    │                         │  ② Curator computes:  │
-    │                         │  - capsule (ECDH+HKDF)│
-    │                         │  - capsuleHash        │
-    │                         │  - HTLC script        │
-    │                         │  - invoice            │
-    │                         │                       │
-    │ ③ INVOICE               │                       │
-    │ {                       │                       │
-    │   capsuleHash,          │                       │
-    │   satoshisPerKilobyte,  │                       │
-    │   chunkSizeBytes,       │                       │
-    │   htlcScript,           │                       │
-    │   nonce,                │                       │
-    │   invoiceId,            │                       │
-    │   creatorPubKey,        │                       │
-    │   curatorEndpoint,      │                       │
-    │   creatorSharePercent   │                       │
-    │ }                       │                       │
-    │<────────────────────────│<──────────────────────│
-    │                         │                       │
-    │ ④ Viewer builds HTLC   │                       │
-    │    funding tx:          │                       │
-    │    Input: Viewer UTXO   │                       │
-    │    Output: HTLC script  │                       │
-    │    Broadcast to network │                       │
-    │                         │                       │
-    │ ⑤ FUNDING_NOTIFY        │                       │
-    │ { fundingTxId }         │                       │
-    │────────────────────────>│──────────────────────>│
-    │                         │                       │
-    │                         │  ⑥ Curator:           │
-    │                         │  - Fetch tx by txid   │
-    │                         │  - Validate HTLC      │
-    │                         │  - Build claim tx     │
-    │                         │    (atomic split)     │
-    │                         │  - Broadcast          │
-    │                         │                       │
-    │ ⑦ CLAIM_NOTIFY          │                       │
-    │ { claimTxId }           │                       │
-    │<────────────────────────│<──────────────────────│
-    │                         │                       │
-    │ ⑧ Viewer:              │                       │
-    │ - Fetch claim tx by txid│                       │
-    │ - Extract capsule from  │                       │
-    │   scriptSig             │                       │
-    │ - Compute buyerMask     │                       │
-    │ - Recover aesKey_i      │                       │
-    │ - Decrypt chunk         │                       │
-    │ - Play                  │                       │
+Viewer Agent                               Curator Service
+    │                                            │
+    │ ① REQUEST (HTTP API)                       │
+    │ {                                          │
+    │   videoId,                                 │
+    │   chunkIndex,                              │
+    │   buyerPubKey                              │
+    │ }                                          │
+    │───────────────────────────────────────────>│
+    │                                            │
+    │                            ② Curator computes:
+    │                            - capsule (ECDH+HKDF)
+    │                            - capsuleHash
+    │                            - HTLC script
+    │                            - invoice
+    │                                            │
+    │ ③ INVOICE                                  │
+    │ {                                          │
+    │   capsuleHash,                             │
+    │   satoshisPerKilobyte,                     │
+    │   chunkSizeBytes,                          │
+    │   htlcScript,                              │
+    │   nonce,                                   │
+    │   invoiceId,                               │
+    │   P_video,                                 │
+    │   creatorSharePercent                      │
+    │ }                                          │
+    │<───────────────────────────────────────────│
+    │                                            │
+    │ ④ Viewer builds HTLC                       │
+    │    funding tx:                             │
+    │    Input: Viewer UTXO                      │
+    │    Output: HTLC script                     │
+    │    Broadcast to network                    │
+    │                                            │
+    │ ⑤ FUNDING_NOTIFY                           │
+    │ { fundingTxId }                            │
+    │───────────────────────────────────────────>│
+    │                                            │
+    │                            ⑥ Curator:
+    │                            - Fetch tx by txid
+    │                            - Validate HTLC
+    │                            - Build claim tx
+    │                              (atomic split)
+    │                            - Broadcast
+    │                                            │
+    │ ⑦ CLAIM_NOTIFY                             │
+    │ { claimTxId }                              │
+    │<───────────────────────────────────────────│
+    │                                            │
+    │ ⑧ Viewer:                                  │
+    │ - Fetch claim tx by txid                   │
+    │ - Extract capsule from scriptSig           │
+    │ - Compute buyerMask                        │
+    │ - Recover aesKey_i                         │
+    │ - Decrypt chunk                            │
+    │ - Play                                     │
 ```
 
 ### 2.5 Security Properties
@@ -224,7 +222,7 @@ Viewer and CDN maintain an off-chain payment channel for high-throughput micropa
 
 ```
 [Periodic — every N minutes, LLM-driven]
-  1. Query Curator overlay for new videos
+  1. Query Curator API for new videos
   2. Evaluate: creator reputation, category demand, existing competition
   3. Decide: cache or skip
   4. If cache: download encrypted chunks from chain (by txid)
@@ -244,7 +242,7 @@ Viewer and CDN maintain an off-chain payment channel for high-throughput micropa
 [Per-video decision — LLM-driven]
   Input:
     - User preference profile (liked tags, watch-through history)
-    - Candidate videos (from Curator overlay)
+    - Candidate videos (from Curator API)
     - Available sellers + pricing (from MessageBox)
   Output:
     - Ranked recommendation list
