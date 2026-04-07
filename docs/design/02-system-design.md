@@ -53,7 +53,6 @@ Metanet Node Structure:
 
   TLV Payload:
     videoId                    # SHA256(SHA256(original video file))
-    creatorPubKey              # Creator's BRC-100 public key
     title
     description
     tags                       # JSON array
@@ -82,11 +81,12 @@ Metanet Node Structure:
 
 Curator is a known service provider that serves both humans and AI agents:
 
-**Web UI (for humans)**:
+**Web UI (for Viewers)**:
 - Browse and search video catalog
-- Creator dashboard: upload videos, set pricing, view analytics
 - Embedded Viewer Agent (client-side JS): when user clicks play, the browser-side agent handles HTLC authorization (via Curator API), chunk download (from CDN), local decryption, and playback. Curator server never touches decrypted video data.
 - Requires BSV wallet capability in browser (wallet extension or embedded wallet)
+
+Creator does not use Curator's Web UI. Creator uses their own tools (CLI / SDK) to encrypt, store on-chain, then calls Curator API to submit on-chain references + per-video key.
 
 **API (for agents)**:
 
