@@ -140,9 +140,9 @@ On-chain Metanet metadata is NOT used for discovery. It serves as the source of 
 │  Claim tx atomic split: Creator % + Curator %    │
 │  High on-chain transaction throughput             │
 ├──────────────────────────────────────────────────┤
-│  Layer 2: Download Fee (Off-chain)               │
+│  Layer 2: Download Fee                           │
 │  Viewer ──→ CDN                                  │
-│  x402 + Payment Channel → encrypted chunk data   │
+│  x402 + direct micropayment → encrypted chunks   │
 │  100% to data provider                           │
 └──────────────────────────────────────────────────┘
 ```
@@ -159,18 +159,18 @@ Claim Transaction:
   Output 1: curator_share → Curator address   (100 - creatorSharePercent %)
 ```
 
-Split ratio declared in on-chain Metanet metadata, verifiable by anyone.
+Split ratio enforced in-script via OP_PUSH_TX covenant — Curator cannot construct a claim tx that deviates from the declared split. Also verifiable by anyone against on-chain Metanet metadata.
 
-### 4.3 Download (Layer 2) — x402 + Payment Channel
+### 4.3 Download (Layer 2) — x402
 
-CDN serves encrypted chunk data via HTTP 402 protocol:
+CDN serves encrypted chunk data via HTTP 402 protocol with direct micropayment:
 ```
 Viewer → CDN:  GET /chunk/{videoId}/{chunkIndex}
 CDN → Viewer:  402 Payment Required
                X-Price-Per-KB: <sats>
                X-File-Size: <bytes>
                X-Invoice-Id: <hex>
-Viewer → CDN:  Payment via Payment Channel
+Viewer → CDN:  Payment (direct BSV micropayment)
 CDN → Viewer:  200 OK + encrypted chunk data
 ```
 
@@ -217,28 +217,27 @@ HTLC chunk 2  ─────────┤        fetch chunk 2  ────�
                         └───────── Decrypt + Play ───────┘
 ```
 
-### 7.2 Buffering Strategy
+### 7.2 Free First Chunk + Batch Buffering
 
 ```
-t=0s  ──── Initial buffer (3-5 HTLC cycles in parallel) ────
-      HTLC chunk 0  →  claim  →  decrypt  ┐
-      HTLC chunk 1  →  claim  →  decrypt  ├─ buffer ready → start playback
-      HTLC chunk 2  →  claim  →  decrypt  ┘
-
-t=1s  Play chunk 0  │  HTLC chunk 3
-t=2s  Play chunk 1  │  HTLC chunk 4
+t=0s  Play chunk 0 (free, unencrypted)  │  HTLC batch 0 (chunks 1-5) in background
+t=1s  Play chunk 1 (batch 0 ready)      │  HTLC batch 1 (chunks 6-10) in background
 ...
+t=5s  Play chunk 5                      │  HTLC batch 2 (chunks 11-15) in background
 ```
 
-Initial latency: ~3-5 seconds. After buffer filled: smooth playback with rolling pre-purchase.
+- Chunk 0 is free → instant playback, zero startup latency
+- Batch HTLC proceeds in background during chunk 0 playback
+- Adaptive batch size: start small (3-5), increase to 5-10 as viewer continues
 
 ## 8. Transaction Volume
 
 | Metric | Value |
 |--------|-------|
 | Chunk duration | 1 second |
-| On-chain txs per chunk purchase | 2 (HTLC funding + claim) |
-| 30s video full view | 60 on-chain txs |
+| Batch size | 5-10 chunks (adaptive) |
+| On-chain txs per batch | 2 (HTLC funding + claim) |
+| 30s video full view (batch=5) | 12 on-chain txs (vs 60 without batching) |
 | CDN data retrieval | From chain (by txid) or cached |
 
 ## 9. Technology Stack

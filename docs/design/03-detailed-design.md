@@ -47,33 +47,55 @@ nonce(12 bytes) || ciphertext || tag(16 bytes)
 
 ## 2. HTLC + Capsule Protocol
 
-### 2.1 Capsule Computation
+### 2.1 Batch Authorization
 
-Curator computes capsule using the per-video derived key (`D_video`) delegated by Creator:
+To reduce on-chain transaction volume, chunks are authorized in **batches** rather than individually. One HTLC covers multiple consecutive chunks.
+
+**Batch size strategy (adaptive, like TCP slow start)**:
+- First batch: 1-3 chunks (fast start, minimize risk)
+- Subsequent batches: 5-10 chunks (if viewer continues watching)
+- Viewer can stop at any batch boundary — pays for current batch, not the rest
+
+A 30-second video with batch size 5 produces 6 batches = 12 on-chain txs (vs 60 without batching).
+
+### 2.2 Capsule Computation
+
+Curator computes a **batch capsule** that unlocks all chunk keys in the batch:
 
 ```
-# Per buyer, per chunk
-capsule_i = aesKey_i XOR buyerMask
+# Per buyer, per batch
+batchKey = HKDF(ECDH(D_video, P_video), videoId || batchIndex, "bittok-batch-key")
 
-where:
-  aesKey_i  = HKDF(ECDH(D_video, P_video), keyHash_i, "bittok-chunk-encryption")
-  buyerMask = HKDF(ECDH(D_video, P_buyer), keyHash_i || nonce, "bittok-buyer-mask")
-  nonce     = per-invoice random value (16 bytes)
+# Individual chunk keys derived from batchKey
+aesKey_i = HKDF(batchKey, keyHash_i, "bittok-chunk-encryption")
 
-capsuleHash_i = SHA256(SHA256(videoId || chunkIndex || capsule_i))
+# Capsule wraps the batchKey (not individual chunk keys)
+buyerMask = HKDF(ECDH(D_video, P_buyer), videoId || batchIndex || nonce, "bittok-buyer-mask")
+capsule   = batchKey XOR buyerMask
+nonce     = per-invoice random value (16 bytes)
+
+capsuleHash = SHA256(SHA256(videoId || batchIndex || capsule))
 ```
 
 **Buyer-side key recovery**:
 ```
-buyerMask = HKDF(ECDH(D_buyer, P_video), keyHash_i || nonce, "bittok-buyer-mask")
-aesKey_i  = capsule_i XOR buyerMask
+buyerMask = HKDF(ECDH(D_buyer, P_video), videoId || batchIndex || nonce, "bittok-buyer-mask")
+batchKey  = capsule XOR buyerMask
+aesKey_i  = HKDF(batchKey, keyHash_i, "bittok-chunk-encryption")   # for each chunk in batch
 ```
 
 Works because `ECDH(D_video, P_buyer) == ECDH(D_buyer, P_video)` (ECDH symmetry).
 
 Buyer needs `P_video` (included in invoice response) to recover the key.
 
-### 2.2 HTLC Script (108 bytes)
+### 2.3 Free First Chunk (Instant Playback)
+
+To eliminate startup latency, chunk 0 of every video is **unencrypted** (or its key is publicly available in the metadata). This enables:
+- Instant playback when user taps a video (no HTLC needed for first second)
+- HTLC for batch 0 (chunks 1-N) proceeds in background during first-second playback
+- By the time chunk 0 finishes playing, batch 0 keys are ready
+
+### 2.4 HTLC Script (108 bytes)
 
 ```
 <invoiceId>  OP_DROP
@@ -88,7 +110,7 @@ OP_ENDIF
 
 **Parameters**:
 - `invoiceId` (16 bytes): Replay protection
-- `capsuleHash` (32 bytes): SHA256(SHA256(videoId || chunkIndex || capsule)) — verified by `OP_HASH256` which computes double-SHA256
+- `capsuleHash` (32 bytes): SHA256(SHA256(videoId || batchIndex || capsule)) — verified by `OP_HASH256` which computes double-SHA256
 - `curatorPkh` (20 bytes): Curator's P2PKH address (claim path)
 - `buyerPkh` (20 bytes): Buyer's P2PKH address (refund path)
 
@@ -96,30 +118,33 @@ OP_ENDIF
 
 | Path | Selector | Unlocking Script | Use Case |
 |------|----------|-----------------|----------|
-| Claim (IF) | `OP_TRUE` | `<sig> <curatorPubKey> <videoId\|\|chunkIdx\|\|capsule> OP_TRUE` | Curator claims, reveals capsule |
+| Claim (IF) | `OP_TRUE` | `<sig> <curatorPubKey> <videoId\|\|batchIdx\|\|capsule> OP_TRUE` | Curator claims, reveals batch capsule |
 | Refund (ELSE) | `OP_FALSE` | `<sig> <buyerPubKey> OP_FALSE` | Buyer refunds after timelock |
 
-**Timeout**: Enforced by `OP_CHECKLOCKTIMEVERIFY` in the ELSE branch (default 72 blocks, range [6, 288]). Consensus-level guarantee — Buyer cannot refund before the locktime.
+**Timeout**: Enforced by `OP_CHECKLOCKTIMEVERIFY` in the ELSE branch (default 6 blocks / ~1 hour, range [6, 72]). Short locktime is appropriate for micropayments — minimizes fund lockup for the Viewer while giving Curator sufficient time to claim.
 
-### 2.3 Claim Transaction (Atomic Split)
+### 2.5 Claim Transaction (Atomic Split with Covenant)
 
 ```
 Claim Transaction:
   Input 0:  HTLC UTXO
-            scriptSig: <curatorSig> <curatorPubKey> <videoId||chunkIdx||capsule> OP_TRUE
+            scriptSig: <curatorSig> <curatorPubKey> <videoId||batchIdx||capsule> OP_TRUE
 
   Output 0: creator_share → P2PKH(P_creator)     # creatorSharePercent %
   Output 1: curator_share → P2PKH(P_curator)     # (100 - creatorSharePercent) %
 ```
 
+**Covenant enforcement**: The HTLC claim path uses `OP_PUSH_TX` (sighash preimage introspection) to verify that the claim transaction's outputs match the required split ratio. This is cryptographically enforced in-script — Curator cannot construct a claim tx that deviates from the declared `creatorSharePercent`. Implemented via Runar smart contract.
+
 Price calculation:
 ```
-total = ceil(satoshisPerKilobyte * chunkSizeBytes / 1024)
+batchSizeBytes = sum(chunkSizes[i] for i in batch)
+total = ceil(satoshisPerKilobyte * batchSizeBytes / 1024)
 creator_share = floor(total * creatorSharePercent / 100)
 curator_share = total - creator_share
 ```
 
-### 2.4 Purchase Flow (Direct API to Curator)
+### 2.6 Purchase Flow (Direct API to Curator)
 
 ```
 Viewer Agent                               Curator Service
@@ -127,7 +152,8 @@ Viewer Agent                               Curator Service
     │ ① REQUEST (HTTP API)                       │
     │ {                                          │
     │   videoId,                                 │
-    │   chunkIndex,                              │
+    │   batchIndex,                              │
+    │   batchSize,                               │
     │   buyerPubKey                              │
     │ }                                          │
     │───────────────────────────────────────────>│
@@ -142,7 +168,7 @@ Viewer Agent                               Curator Service
     │ {                                          │
     │   capsuleHash,                             │
     │   satoshisPerKilobyte,                     │
-    │   chunkSizeBytes,                          │
+    │   batchSizeBytes,                           │
     │   htlcScript,                              │
     │   nonce,                                   │
     │   invoiceId,                               │
@@ -176,17 +202,17 @@ Viewer Agent                               Curator Service
     │ - Fetch claim tx by txid                   │
     │ - Extract capsule from scriptSig           │
     │ - Compute buyerMask                        │
-    │ - Recover aesKey_i                         │
-    │ - Decrypt chunk                            │
-    │ - Play                                     │
+    │ - Recover batchKey                          │
+    │ - Derive aesKey_i for each chunk in batch  │
+    │ - Decrypt chunks, play                     │
 ```
 
-### 2.5 Security Properties
+### 2.7 Security Properties
 
 | Property | Mechanism |
 |----------|-----------|
 | Atomicity | HTLC: Curator gets paid ⟺ capsule revealed |
-| Atomic split | Claim tx outputs enforced by Curator; verifiable against on-chain metadata |
+| Atomic split | Claim tx outputs enforced by OP_PUSH_TX covenant in-script; Curator cannot deviate |
 | Buyer-specific | Capsule uses ECDH(D_video, P_buyer); on-chain but only buyer can recover aesKey |
 | Unlinkability | Per-invoice nonce prevents purchase correlation |
 | Refund safety | OP_CHECKLOCKTIMEVERIFY-enforced timelock in refund path |
@@ -215,9 +241,11 @@ X-Expiry: 1712500000
 total = ceil(X-Price-Per-KB * X-File-Size / 1024)
 ```
 
-### 3.3 Payment Channel
+### 3.3 Payment Method
 
-Viewer and CDN maintain an off-chain payment channel for high-throughput micropayments. Individual chunk downloads settle within the channel; on-chain settlement happens periodically.
+Each x402 chunk download is paid via direct BSV micropayment (single on-chain transaction). The Viewer includes payment proof in the follow-up request.
+
+**Future improvement**: For frequent Viewer↔CDN interactions, introduce payment channels or a CDN aggregator to reduce per-request on-chain overhead. A Viewer would maintain a single long-lived channel with an aggregator that routes payments to multiple CDNs.
 
 ## 4. Agent AI Behaviors
 
@@ -274,7 +302,16 @@ After each 1-second chunk, Viewer agent evaluates:
 | Seller selection | Weighted scoring | Each seller switch |
 | MessageBox communication | Deterministic | Continuous |
 
-## 5. On-Chain Data Hashing Convention
+## 5. Video Encoding Requirements
+
+Chunk boundaries must align with video keyframes (I-frames) to ensure:
+- Each chunk is independently decodable (no dependency on previous chunks)
+- No decoding artifacts at chunk boundaries
+- Optimal compression efficiency within each chunk
+
+In practice, the video encoder (ffmpeg) is configured with `force_key_frames` at 1-second intervals to ensure GOP (Group of Pictures) boundaries coincide with chunk boundaries. Actual chunk sizes may vary due to scene complexity — this is why `chunkSizes[]` is included in the metadata.
+
+## 6. On-Chain Data Hashing Convention
 
 All data hashes throughout the system use double-hash (BSV standard):
 
@@ -286,9 +323,9 @@ Applied to:
 - `videoId = SHA256(SHA256(original_video_file))`
 - `chunkHashes[i] = SHA256(SHA256(encrypted_chunk_i))`
 - `keyHash_i = SHA256(SHA256(plaintext_chunk_i))`
-- `capsuleHash_i = SHA256(SHA256(videoId || chunkIndex || capsule_i))`
+- `capsuleHash = SHA256(SHA256(videoId || batchIndex || capsule))`
 
-## 6. Pricing Convention
+## 7. Pricing Convention
 
 All pricing uses `satoshisPerKilobyte`, consistent with `@bsv/sdk` `SatoshisPerKilobyte` class:
 
