@@ -1,0 +1,82 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" width="512" height="512">
+  <defs>
+    <!-- Main gradient: vibrant blue to electric purple -->
+    <linearGradient id="grad-main" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" style="stop-color:#6366F1"/>
+      <stop offset="50%" style="stop-color:#8B5CF6"/>
+      <stop offset="100%" style="stop-color:#EC4899"/>
+    </linearGradient>
+    <!-- Play button gradient -->
+    <linearGradient id="grad-play" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" style="stop-color:#FFFFFF"/>
+      <stop offset="100%" style="stop-color:#F0EAFF"/>
+    </linearGradient>
+    <!-- Chunk segment glow -->
+    <filter id="glow">
+      <feGaussianBlur stdDeviation="3" result="blur"/>
+      <feMerge>
+        <feMergeNode in="blur"/>
+        <feMergeNode in="SourceGraphic"/>
+      </feMerge>
+    </filter>
+    <!-- Shadow for depth -->
+    <filter id="shadow">
+      <feDropShadow dx="0" dy="4" stdDeviation="8" flood-color="#6366F1" flood-opacity="0.3"/>
+    </filter>
+  </defs>
+
+  <!-- Background circle -->
+  <circle cx="256" cy="256" r="240" fill="url(#grad-main)" filter="url(#shadow)"/>
+
+  <!-- Chunk ring: 12 segments representing 1-second chunks -->
+  <!-- Each segment is a small arc, suggesting chunked streaming -->
+  <g stroke="#FFFFFF" stroke-width="3" fill="none" opacity="0.25" stroke-linecap="round">
+    <!-- 12 evenly spaced arc segments around the circle -->
+    <path d="M 256 28 A 228 228 0 0 1 370 58"/>
+    <path d="M 384 68 A 228 228 0 0 1 462 166"/>
+    <path d="M 472 182 A 228 228 0 0 1 484 300"/>
+    <path d="M 480 316 A 228 228 0 0 1 420 424"/>
+    <path d="M 408 436 A 228 228 0 0 1 300 484"/>
+    <path d="M 284 486 A 228 228 0 0 1 170 448"/>
+    <path d="M 156 440 A 228 228 0 0 1 68 350"/>
+    <path d="M 58 334 A 228 228 0 0 1 32 220"/>
+    <path d="M 34 204 A 228 228 0 0 1 92 100"/>
+    <path d="M 104 88 A 228 228 0 0 1 208 34"/>
+    <path d="M 222 30 A 228 228 0 0 1 256 28"/>
+  </g>
+
+  <!-- Active chunk indicators (brighter, showing "currently streaming") -->
+  <g stroke="#FFFFFF" stroke-width="4" fill="none" opacity="0.7" stroke-linecap="round" filter="url(#glow)">
+    <path d="M 256 28 A 228 228 0 0 1 370 58"/>
+    <path d="M 384 68 A 228 228 0 0 1 462 166"/>
+    <path d="M 472 182 A 228 228 0 0 1 484 300"/>
+  </g>
+
+  <!-- Central play button (rounded triangle) -->
+  <path d="M 208 148
+           C 208 134, 218 126, 230 134
+           L 370 224
+           C 384 232, 384 280, 370 288
+           L 230 378
+           C 218 386, 208 378, 208 364 Z"
+        fill="url(#grad-play)" opacity="0.95"/>
+
+  <!-- Blockchain chain: 3 small connected blocks inside the play button -->
+  <!-- Represents the BSV micropayment chain -->
+  <g transform="translate(260, 230)">
+    <!-- Block 1 -->
+    <rect x="-4" y="-8" width="16" height="16" rx="3" fill="none" stroke="#8B5CF6" stroke-width="2.5" opacity="0.6"/>
+    <!-- Link -->
+    <line x1="14" y1="0" x2="22" y2="0" stroke="#8B5CF6" stroke-width="2" opacity="0.4"/>
+    <!-- Block 2 -->
+    <rect x="22" y="-8" width="16" height="16" rx="3" fill="none" stroke="#8B5CF6" stroke-width="2.5" opacity="0.6"/>
+    <!-- Link -->
+    <line x1="40" y1="0" x2="48" y2="0" stroke="#8B5CF6" stroke-width="2" opacity="0.4"/>
+    <!-- Block 3 -->
+    <rect x="48" y="-8" width="16" height="16" rx="3" fill="none" stroke="#8B5CF6" stroke-width="2.5" opacity="0.6"/>
+  </g>
+
+  <!-- "B" letterform integrated into top-left of the play button area -->
+  <text x="168" y="210" font-family="system-ui, -apple-system, 'Segoe UI', sans-serif"
+        font-size="56" font-weight="800" fill="#FFFFFF" opacity="0.15">B</text>
+</svg>
